@@ -87,7 +87,7 @@ public final class Parser {
     // logical_expr ::= comparison_expr (('AND' | 'OR') comparison_expr)*
     private Ast.Expr parseLogicalExpr() throws ParseException {
         Ast.Expr left = parseComparisonExpr();
-        while (tokens.match("AND", "OR")) {
+        while (tokens.match("AND") || tokens.peek("OR")) {
             String operator = tokens.get(-1).literal();
             Ast.Expr right = parseComparisonExpr();
             left = new Ast.Expr.Binary(operator, left, right);
@@ -99,7 +99,7 @@ public final class Parser {
     private Ast.Expr parseComparisonExpr() throws ParseException {
         Ast.Expr left = parseAdditiveExpr();
 
-        while (tokens.match("<", "<=", ">", ">=", "==", "!=")) {
+        while (tokens.match("<") || tokens.peek("<=") || tokens.peek(">") || tokens.peek(">=") || tokens.peek("==") || tokens.peek("!=")) {
             String operator = tokens.get(-1).literal();
             Ast.Expr right = parseAdditiveExpr();
             left = new Ast.Expr.Binary(operator, left, right);
@@ -112,8 +112,9 @@ public final class Parser {
     private Ast.Expr parseAdditiveExpr() throws ParseException {
         Ast.Expr left = parseMultiplicativeExpr();
 
-        while (tokens.match("+") || tokens.match("-")) {
-            String operator = tokens.get(-1).literal();
+        while (tokens.peek("+") || tokens.peek("-")) {
+            String operator = tokens.get(0).literal();
+            tokens.match(operator);
             Ast.Expr right = parseMultiplicativeExpr();
             left = new Ast.Expr.Binary(operator, left, right);
         }
@@ -125,8 +126,9 @@ public final class Parser {
     private Ast.Expr parseMultiplicativeExpr() throws ParseException {
         Ast.Expr left = parseSecondaryExpr();
 
-        while (tokens.match("*") ||  tokens.match("/")) {
-            String operator = tokens.get(-1).literal();
+        while (tokens.peek("*") || tokens.peek("/")) {
+            String operator = tokens.get(0).literal();
+            tokens.match(operator);
             Ast.Expr right = parseSecondaryExpr();
             left = new Ast.Expr.Binary(operator, left, right); // keep expanding on left while more operators exist
         }
@@ -137,7 +139,7 @@ public final class Parser {
     // secondary_expr ::= primary_expr property_or_method*
     private Ast.Expr parseSecondaryExpr() throws ParseException {
         var primaryExpr = parsePrimaryExpr();
-        while (tokens.peek('.')) {
+        while (tokens.peek(".")) {
             primaryExpr = parsePropertyOrMethod(primaryExpr);
         }
         return primaryExpr;
@@ -145,7 +147,14 @@ public final class Parser {
 
     // property_or_method ::= '.' identifier ('(' (expr (',' expr)*)? ')')?
     private Ast.Expr parsePropertyOrMethod(Ast.Expr receiver) throws ParseException {
-        Preconditions.checkArgument(tokens.match("."));
+        if (!tokens.match(".")) {
+            throw new ParseException("Expected '.' in expression.", tokens.getNext());
+        }
+
+        if (!tokens.has(0)) {
+            throw new ParseException("Expected identifier in expression.", tokens.getNext());
+        }
+
         var token = tokens.get(0);
 
         if (!tokens.match(Token.Type.IDENTIFIER)) {
@@ -175,6 +184,9 @@ public final class Parser {
 
     // primary_expr ::= literal_expr | group_expr | object_expr | variable_or_function_expr
     private Ast.Expr parsePrimaryExpr() throws ParseException {
+        if (!tokens.has(0)) {
+            throw new ParseException("Expected expression, found end of input.", tokens.getNext());
+        }
         var token = tokens.get(0);
         List<Token.Type> types = List.of(Token.Type.INTEGER, Token.Type.DECIMAL, Token.Type.CHARACTER, Token.Type.STRING);
 
@@ -185,7 +197,7 @@ public final class Parser {
         } else if (token.literal().equals("OBJECT")) {
             return parseObjectExpr();
         } else if (token.type().equals(Token.Type.IDENTIFIER)) {
-            return parseGroupExpr();
+            return parseVariableOrFunctionExpr();
         }
         throw new ParseException("No Literal, Group, Object, or Variable/Function Expression found", tokens.getNext());
     }
@@ -244,7 +256,9 @@ public final class Parser {
 
     // group_expr ::= '(' expr ')'
     private Ast.Expr parseGroupExpr() throws ParseException {
-        Preconditions.checkArgument(tokens.match("("));
+        if (!tokens.match("(")) {
+            throw new ParseException("Missing opening parentheses in group expression.", tokens.getNext());
+        }
         var expr = parseExpr();
         if (!tokens.match(")")) {
            throw new ParseException("Missing closing parentheses in group expression.", tokens.getNext()); // Check index here
@@ -265,11 +279,16 @@ public final class Parser {
             tokens.match(token.type());
         }
 
-        if (tokens.match(Token.Type.IDENTIFIER)) {
-            name = tokens.get(-1).literal();
-        }
-
-        if (!tokens.get(0).literal().equals("DO")) {
+        if (tokens.peek("DO")) {
+            tokens.match("DO");
+            name = tokens.get(0).literal();
+        } else if (tokens.peek(Token.Type.IDENTIFIER)) {
+            name = tokens.get(0).literal();
+            tokens.match(Token.Type.IDENTIFIER);
+            if (!tokens.match("DO")) {
+                throw new ParseException("Missing 'DO' after identifier", tokens.getNext());
+            }
+        } else {
             throw new ParseException("Missing 'DO' in Object expression", tokens.getNext());
         }
 

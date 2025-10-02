@@ -20,7 +20,10 @@ public final class LexerTests {
         return Stream.of(
             Arguments.of("Space", " ", true),
             Arguments.of("Newline", "\n", true),
-            Arguments.of("Multiple", "    \n    ", true)
+            Arguments.of("Multiple", "    \n    ", true),
+            Arguments.of("Mix", "   \n  \n \r    ", true),
+            Arguments.of("Tab", "\t", true), // I believe this test case should be true according to provided grammar rules
+            Arguments.of("All Whitespace", " \b\r\n\t", true)
         );
     }
 
@@ -93,7 +96,8 @@ public final class LexerTests {
             Arguments.of("Alphabetic", "\'c\'", true),
             Arguments.of("Newline Escape", "\'\\n\'", true),
             Arguments.of("Unterminated", "\'u", false),
-            Arguments.of("Multiple", "\'abc\'", false)
+            Arguments.of("Multiple", "\'abc\'", false),
+            Arguments.of("Empty Character", "''", false)
         );
     }
 
